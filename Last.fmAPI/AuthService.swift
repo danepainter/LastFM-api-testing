@@ -21,7 +21,7 @@ struct AuthService {
         return comps.url!
     }
 
-    func fetchSessionKey(token: String) async throws -> String {
+    func fetchSession(token: String) async throws -> (key: String, name: String) {
         let params: [String: String] = [
             "api_key": Secrets.apiKey,
             "method": "auth.getSession",
@@ -46,7 +46,7 @@ struct AuthService {
         }
 
         let payload = try JSONDecoder().decode(SessionPayload.self, from: data)
-        return payload.session.key
+        return (payload.session.key, payload.session.name)
     }
 }
 

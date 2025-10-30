@@ -12,6 +12,7 @@ struct ContentView: View {
     @Environment(\.openURL) private var openURL
     private let auth = AuthService()
     @State private var sessionKey: String?
+    @State private var username: String?
     
     
     var body: some View {
@@ -33,7 +34,7 @@ struct ContentView: View {
                         VStack(spacing: 12) {
                             Text("Oops").font(.headline)
                             Text(message).font(.subheadline).foregroundStyle(.secondary)
-                            Button("Retry") { Task { await vm.load() } } 
+                            Button("Retry") { Task { await vm.load(user: username) } } 
                         }
                         .padding()
                     } else {
@@ -50,7 +51,7 @@ struct ContentView: View {
                 }
                 .navigationTitle("Top Tracks")
             }
-            .task { await vm.load() }
+            .task { await vm.load(user: username) }
         }
         .onOpenURL { url in
             guard url.scheme == "lastfmapp",
@@ -59,8 +60,10 @@ struct ContentView: View {
                     .queryItems?.first(where: { $0.name == "token" })?.value else { return }
             Task {
                 do {
-                    let sk = try await auth.fetchSessionKey(token: token)
-                    sessionKey = sk
+                    let session = try await auth.fetchSession(token: token)
+                    sessionKey = session.key
+                    username = session.name
+                    await vm.load(user: session.name)
                 } catch {
                     print("Failed to fetch session:", error)
                 }

@@ -8,13 +8,17 @@ final class TracksViewModel: ObservableObject {
 
     private let api = APIClient()
 
-    func load() async {
+    func load(user: String? = nil) async {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            tracks = try await api.fetchTopTracks()
+            if let user, !user.isEmpty {
+                tracks = try await api.fetchUserTopTracks(user: user)
+            } else {
+                tracks = try await api.fetchTopTracks()
+            }
         } catch {
             errorMessage = (error as NSError).localizedDescription
         }
