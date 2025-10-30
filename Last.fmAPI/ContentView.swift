@@ -17,34 +17,49 @@ struct ContentView: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                if sessionKey == nil {
-                    Button("Connect Last.fm") {
+            if sessionKey == nil {
+                VStack(spacing: 24) {
+                    Spacer()
+                    Text("SFLHC \n Music Tracking ")
+                        .font(.title)
+                        .multilineTextAlignment(.center)
+                        .bold()
+                    Button {
                         let url = auth.makeAuthURL()
                         openURL(url)
+                    } label: {
+                        Text("Connect to Last.fm")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .controlSize(.large)
+                    .padding(.horizontal, 24)
+                    Spacer()
                 }
-                
-                Group {
-                    if vm.isLoading {
-                        ProgressView("Loading...")
-                    } else if let message = vm.errorMessage {
-                        VStack(spacing: 12) {
-                            Text("Oops").font(.headline)
-                            Text(message).font(.subheadline).foregroundStyle(.secondary)
-                            Button("Retry") { Task { await vm.load(user: username) } } 
+            } else {
+                VStack(spacing: 16) {
+                    Group {
+                        if vm.isLoading {
+                            ProgressView("Loading...")
+                        } else if let message = vm.errorMessage {
+                            VStack(spacing: 12) {
+                                Text("Oops").font(.headline)
+                                Text(message).font(.subheadline).foregroundStyle(.secondary)
+                                Button("Retry") { Task { await vm.load(user: username) } }
+                            }
+                            .padding()
+                        } else {
+                            List(Array(vm.tracks.enumerated()), id: \.element.id) { index, track in
+                                TrackRow(index: index + 1, track: track)
+                            }
+                            .listStyle(.plain)
                         }
-                        .padding()
-                    } else {
-                        List(Array(vm.tracks.enumerated()), id: \.element.id) { index, track in
-                            TrackRow(index: index + 1, track: track)
-                        }
-                        .listStyle(.plain)
                     }
                 }
                 .navigationTitle("Top Tracks")
+                .task { await vm.load(user: username) }
             }
-            .task { await vm.load(user: username) }
         }
         .onOpenURL { url in
             guard url.scheme == "lastfmapp",
