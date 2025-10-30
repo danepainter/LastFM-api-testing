@@ -125,4 +125,98 @@ struct APIClient {
         }
         return nil
     }
+
+    // user.getRecentTracks supports from/to (unix timestamps). We'll fetch up to `limit` items.
+    func fetchUserRecentTracks(user: String, from: Date, to: Date, limit: Int = 200) async throws -> [RecentTrack] {
+        var comps = URLComponents(string: base)
+        comps?.queryItems = [
+            .init(name: "method", value: "user.getRecentTracks"),
+            .init(name: "api_key", value: apiKey),
+            .init(name: "user", value: user),
+            .init(name: "format", value: "json"),
+            .init(name: "limit", value: String(limit)),
+            .init(name: "from", value: String(Int(from.timeIntervalSince1970))),
+            .init(name: "to", value: String(Int(to.timeIntervalSince1970)))
+        ]
+        guard let url = comps?.url else { throw APIError.badURL }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status != 200 {
+            if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
+                throw APIError.apiError(code: err.error, message: err.message)
+            } else {
+                let body = String(data: data, encoding: .utf8)
+                throw APIError.badResponse(status: status, body: body)
+            }
+        }
+
+        struct RecentTracksResponse: Decodable {
+            struct Container: Decodable { let track: [RecentTrack]? }
+            let recenttracks: Container
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let payload = try decoder.decode(RecentTracksResponse.self, from: data)
+        return payload.recenttracks.track ?? []
+    }
+
+    // Paginated fetch to cover larger windows; stops when page exceeds totalPages or maxPages
+    func fetchUserRecentTracksAll(
+        user: String,
+        from: Date,
+        to: Date,
+        pageSize: Int = 200,
+        maxPages: Int = 10
+    ) async throws -> [RecentTrack] {
+        struct RecentTracksResponse: Decodable {
+            struct Attr: Decodable { let page: String; let totalPages: String }
+            struct Container: Decodable { let track: [RecentTrack]?; let attr: Attr?
+                enum CodingKeys: String, CodingKey { case track; case attr = "@attr" }
+            }
+            let recenttracks: Container
+        }
+
+        var results: [RecentTrack] = []
+        var currentPage = 1
+        var totalPages = 1
+        repeat {
+            var comps = URLComponents(string: base)
+            comps?.queryItems = [
+                .init(name: "method", value: "user.getRecentTracks"),
+                .init(name: "api_key", value: apiKey),
+                .init(name: "user", value: user),
+                .init(name: "format", value: "json"),
+                .init(name: "limit", value: String(pageSize)),
+                .init(name: "page", value: String(currentPage)),
+                .init(name: "from", value: String(Int(from.timeIntervalSince1970))),
+                .init(name: "to", value: String(Int(to.timeIntervalSince1970)))
+            ]
+            guard let url = comps?.url else { throw APIError.badURL }
+
+            let (data, response) = try await URLSession.shared.data(from: url)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            if status != 200 {
+                if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
+                    throw APIError.apiError(code: err.error, message: err.message)
+                } else {
+                    let body = String(data: data, encoding: .utf8)
+                    throw APIError.badResponse(status: status, body: body)
+                }
+            }
+
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let payload = try decoder.decode(RecentTracksResponse.self, from: data)
+            let pageTracks = payload.recenttracks.track ?? []
+            results.append(contentsOf: pageTracks)
+            if let attr = payload.recenttracks.attr {
+                totalPages = Int(attr.totalPages) ?? totalPages
+            }
+            currentPage += 1
+        } while currentPage <= totalPages && currentPage <= maxPages
+
+        return results
+    }
 }

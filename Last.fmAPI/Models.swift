@@ -28,6 +28,23 @@ struct LastFMImage: Decodable {
     enum CodingKeys: String, CodingKey { case url = "#text"; case size }
 }
 
+// MARK: - Recent Tracks (user.getRecentTracks)
+struct RecentTrack: Identifiable, Decodable {
+    var id: String { uts + name + artist.name }
+    let name: String
+    let artist: RecentArtist
+    let date: RecentDate?
+    // uts exposed for convenience
+    var uts: String { date?.uts ?? "" }
+
+    struct RecentDate: Decodable { let uts: String }
+    struct RecentArtist: Decodable {
+        let name: String
+        let mbid: String?
+        enum CodingKeys: String, CodingKey { case name = "#text"; case mbid }
+    }
+}
+
 extension Track {
     var imageURL: URL? {
         // Prefer larger images if available; fall back to any non-empty URL
