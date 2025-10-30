@@ -83,4 +83,46 @@ struct APIClient {
         let payload = try decoder.decode(UserTopTracksResponse.self, from: data)
         return payload.toptracks.track
     }
+
+    // Fallback: fetch track.getInfo to obtain album images when list images are empty
+    func fetchTrackImageURL(artist: String, track: String) async throws -> URL? {
+        var comps = URLComponents(string: base)
+        comps?.queryItems = [
+            .init(name: "method", value: "track.getInfo"),
+            .init(name: "api_key", value: apiKey),
+            .init(name: "artist", value: artist),
+            .init(name: "track", value: track),
+            .init(name: "format", value: "json")
+        ]
+        guard let url = comps?.url else { throw APIError.badURL }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status != 200 {
+            if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
+                throw APIError.apiError(code: err.error, message: err.message)
+            } else {
+                return nil
+            }
+        }
+
+        struct TrackInfoResponse: Decodable {
+            struct Album: Decodable { let image: [LastFMImage]? }
+            struct Inner: Decodable { let album: Album? }
+            let track: Inner
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        if let info = try? decoder.decode(TrackInfoResponse.self, from: data),
+           let images = info.track.album?.image {
+            let preferredOrder = ["mega", "extralarge", "large", "medium", "small"]
+            for label in preferredOrder {
+                if let found = images.first(where: { $0.size == label && !$0.url.isEmpty }), let u = found.url.asHTTPSUrl() {
+                    return u
+                }
+            }
+            if let any = images.last(where: { !$0.url.isEmpty }), let u = any.url.asHTTPSUrl() { return u }
+        }
+        return nil
+    }
 }

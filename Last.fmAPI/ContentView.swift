@@ -18,9 +18,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                if let sk = sessionKey {
-                    Text("Connected: \(sk)").font(.footnote).foregroundStyle(.secondary)
-                } else {
+                if sessionKey == nil {
                     Button("Connect Last.fm") {
                         let url = auth.makeAuthURL()
                         openURL(url)
@@ -38,13 +36,8 @@ struct ContentView: View {
                         }
                         .padding()
                     } else {
-                        List(vm.tracks) { track in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(track.name).font(.headline)
-                                if let artist = track.artist?.name {
-                                    Text(artist).foregroundStyle(.secondary)
-                                }
-                            }
+                        List(Array(vm.tracks.enumerated()), id: \.element.id) { index, track in
+                            TrackRow(index: index + 1, track: track)
                         }
                         .listStyle(.plain)
                     }
