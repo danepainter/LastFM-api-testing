@@ -22,18 +22,29 @@ struct TrackRow: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(track.name).font(.headline)
+                Text(track.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 HStack(spacing: 8) {
                     if let artist = track.artist?.name {
-                        Text(artist).foregroundStyle(.secondary)
+                        Text(artist)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                     if let pc = track.playcount {
-                        Text("• \(pc) plays").foregroundStyle(.secondary)
+                        Text("• \(pc) plays")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
                 .font(.subheadline)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .task {
             // Always try to replace missing or placeholder art with album art
             let needsAlbumArt = track.imageURL == nil || (track.imageURL?.isLastFMPlaceholderImage ?? false)

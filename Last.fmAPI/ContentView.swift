@@ -62,9 +62,18 @@ struct ContentView: View {
                             }
                             .padding(.vertical, 8)
                         } else {
-                            ForEach(Array(vm.tracks.enumerated()), id: \.element.id) { index, track in
-                                TrackRow(index: index + 1, track: track)
+                            // Fixed-height, scrollable container showing ~5 rows
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(Array(vm.tracks.enumerated()), id: \.element.id) { index, track in
+                                        TrackRow(index: index + 1, track: track)
+                                            .padding(.vertical, 8)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .frame(height: 340)
+                            // keep default List section horizontal insets by padding internally
                         }
                     }
                 }
