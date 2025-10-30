@@ -20,8 +20,12 @@ struct ContentView: View {
     // Chart-specific range selector (independent of track fetch range)
     @State private var chartRange: RangeOption = .sevenDays
     @State private var activityRange: RangeOption = .sevenDays
+    // Grid-specific range selector (excludes 1 day)
+    @State private var gridRange: RangeOption = .sevenDays
+    @StateObject private var gridVM = TracksViewModel()
     private let chartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths]
     private let activityChartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths, .oneYear, .overall]
+    private let gridOptions: [RangeOption] = [.sevenDays, .oneMonth, .sixMonths, .oneYear, .overall]
     
     
     var body: some View {
@@ -212,6 +216,7 @@ struct ContentView: View {
                 }
 
                 if !vm.tracks.isEmpty {
+                    artworkGridSection()
                     genreChartSection()
                     dailyActivitySection()
                 }
@@ -240,6 +245,69 @@ struct ContentView: View {
             }
         }
 
+        @ViewBuilder
+        fileprivate func artworkGridSection() -> some View {
+            Section("Top Track Artwork") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Time Range", selection: $gridRange) {
+                        ForEach(gridOptions, id: \.self) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    
+                    if gridVM.isLoading {
+                        ProgressView("Loading artwork...")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding()
+                    } else if let message = gridVM.errorMessage {
+                        VStack(spacing: 12) {
+                            Text("Unable to load artwork")
+                                .font(.headline)
+                            Text(message)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Button("Retry") {
+                                Task {
+                                    await gridVM.load(user: username, period: gridRange.apiValue)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    } else if gridVM.tracks.isEmpty {
+                        Text("No tracks available for this range.")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding()
+                    } else {
+                        let columns = [
+                            GridItem(.flexible(), spacing: 8),
+                            GridItem(.flexible(), spacing: 8),
+                            GridItem(.flexible(), spacing: 8)
+                        ]
+                        
+                        ScrollView {
+                            LazyVGrid(columns: columns, spacing: 8) {
+                                ForEach(gridVM.tracks, id: \.id) { track in
+                                    TrackArtworkView(track: track)
+                                }
+                            }
+                            .padding(.horizontal, 4)
+                        }
+                        .frame(height: 500)
+                    }
+                }
+            }
+            .task {
+                await gridVM.load(user: username, period: gridRange.apiValue, limit: 50)
+            }
+            .onChange(of: gridRange) { _, newValue in
+                Task {
+                    await gridVM.load(user: username, period: newValue.apiValue, limit: 50)
+                }
+            }
+        }
+        
         @ViewBuilder
         fileprivate func genreChartSection() -> some View {
             Section("Listening Time by Genre") {
