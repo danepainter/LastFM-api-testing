@@ -93,6 +93,17 @@ struct ContentView: View {
             case .overall: return 90
             }
         }
+        
+        var maxPagesForActivity: Int {
+            switch self {
+            case .oneDay: return 5        // ~1000 scrobbles max
+            case .sevenDays: return 10     // ~2000 scrobbles max
+            case .oneMonth: return 20     // ~4000 scrobbles max
+            case .sixMonths: return 50    // ~10,000 scrobbles max
+            case .oneYear: return 100     // ~20,000 scrobbles max
+            case .overall: return 250     // ~50,000 scrobbles max (covers 3 years at ~45 scrobbles/day)
+            }
+        }
     }
 
     // MARK: - Subviews
@@ -398,7 +409,9 @@ struct ContentView: View {
         func buildDailyActivity(for option: RangeOption) async {
             guard let user = username, !user.isEmpty,
                   let interval = makeInterval(for: option) else { return }
-            await dailyActivityVM.load(user: user, in: interval)
+            // Use higher page limits for longer time ranges
+            let maxPages = option.maxPagesForActivity
+            await dailyActivityVM.load(user: user, in: interval, maxPages: maxPages)
         }
     }   
     

@@ -16,7 +16,7 @@ final class DailyActivityChartViewModel: ObservableObject {
     
     private let api = APIClient()
     
-    func load(user: String, in window: DateInterval) async {
+    func load(user: String, in window: DateInterval, maxPages: Int = 50) async {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
@@ -28,7 +28,7 @@ final class DailyActivityChartViewModel: ObservableObject {
                 from: window.start,
                 to: window.end,
                 pageSize: 200,
-                maxPages: 10
+                maxPages: maxPages
             )
             
             let dailyData = aggregateByDay(recent)
