@@ -11,7 +11,7 @@ import Charts
 struct ContentView: View {
     @StateObject private var vm = TracksViewModel()
     @StateObject private var ggvm = GenreStackedAreaChartViewModel()
-    @StateObject private var dailyActivityVM = DailyActivityChartViewModel()
+    @StateObject private var listeningActivityVM = ListeningActivityChartViewModel()
     @Environment(\.openURL) private var openURL
     private let auth = AuthService()
     @State private var sessionKey: String?
@@ -102,6 +102,51 @@ struct ContentView: View {
             case .sixMonths: return 50    // ~10,000 scrobbles max
             case .oneYear: return 100     // ~20,000 scrobbles max
             case .overall: return 250     // ~50,000 scrobbles max (covers 3 years at ~45 scrobbles/day)
+            }
+        }
+        
+        var aggregationUnit: Calendar.Component {
+            switch self {
+            case .oneDay, .sevenDays, .oneMonth:
+                // Short ranges: show daily granularity
+                return .day
+            case .sixMonths:
+                // Medium range: aggregate by week to avoid overcrowding (~26 points)
+                return .weekOfYear
+            case .oneYear:
+                // Longer range: aggregate by week (~52 points)
+                return .weekOfYear
+            case .overall:
+                // Very long range: aggregate by month to keep chart readable (~36 points for 3 years)
+                return .month
+            }
+        }
+        
+        var desiredAxisLabelCount: Int {
+            switch self {
+            case .oneDay: return 12      // Show every ~2 hours
+            case .sevenDays: return 7     // Show each day
+            case .oneMonth: return 10     // Show ~every 3 days
+            case .sixMonths: return 12    // Show ~every 2 weeks
+            case .oneYear: return 12      // Show ~every month
+            case .overall: return 12      // Show ~every 3 months
+            }
+        }
+        
+        var xAxisFormat: Date.FormatStyle {
+            switch self {
+            case .oneDay:
+                return .dateTime.hour().minute()
+            case .sevenDays:
+                return .dateTime.weekday(.abbreviated)
+            case .oneMonth:
+                return .dateTime.month(.abbreviated).day()
+            case .sixMonths:
+                return .dateTime.month(.abbreviated)
+            case .oneYear:
+                return .dateTime.month(.abbreviated)
+            case .overall:
+                return .dateTime.month(.abbreviated).year(.twoDigits)
             }
         }
     }
@@ -246,7 +291,7 @@ struct ContentView: View {
         
         @ViewBuilder
         fileprivate func dailyActivitySection() -> some View {
-            Section("Daily Listening Activity") {
+            Section("Listening Activity") {
                 VStack(alignment: .leading, spacing: 12) {
                     Picker("Time Range", selection: $activityRange) {
                         ForEach(activityChartOptions, id: \.self) { option in
@@ -255,9 +300,9 @@ struct ContentView: View {
                     }
                     .pickerStyle(.menu)
                     
-                    if dailyActivityVM.isLoading {
+                    if listeningActivityVM.isLoading {
                         ProgressView("Loading activity…")
-                    } else if let error = dailyActivityVM.errorMessage {
+                    } else if let error = listeningActivityVM.errorMessage {
                         VStack(spacing: 8) {
                             Text("Unable to load activity")
                                 .font(.subheadline)
@@ -266,13 +311,23 @@ struct ContentView: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
-                    } else if dailyActivityVM.points.isEmpty {
+                    } else if listeningActivityVM.points.isEmpty {
                         Text("No activity data available for this range.")
                             .foregroundStyle(.secondary)
                     } else {
-                        Chart(dailyActivityVM.points) { point in
+                        let timeUnit: Calendar.Component = activityRange.aggregationUnit
+                        let chartUnit: Calendar.Component = {
+                            switch timeUnit {
+                            case .day: return .day
+                            case .weekOfYear: return .weekOfYear
+                            case .month: return .month
+                            default: return .day
+                            }
+                        }()
+                        
+                        Chart(listeningActivityVM.points) { point in
                             LineMark(
-                                x: .value("Date", point.date, unit: .day),
+                                x: .value("Date", point.date, unit: chartUnit),
                                 y: .value("Plays", point.playCount)
                             )
                             .foregroundStyle(.green.gradient)
@@ -280,16 +335,23 @@ struct ContentView: View {
                             .symbol(Circle().strokeBorder(lineWidth: 2))
                             
                             AreaMark(
-                                x: .value("Date", point.date, unit: .day),
+                                x: .value("Date", point.date, unit: chartUnit),
                                 y: .value("Plays", point.playCount)
                             )
                             .foregroundStyle(.green.opacity(0.1).gradient)
                             .interpolationMethod(.catmullRom)
                         }
                         .chartXAxis {
-                            AxisMarks { value in
+                            AxisMarks(values: .automatic(desiredCount: activityRange.desiredAxisLabelCount)) { value in
                                 AxisGridLine()
-                                AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+                                if let date = value.as(Date.self) {
+                                    AxisValueLabel {
+                                        Text(date, format: activityRange.xAxisFormat)
+                                            .font(.caption2)
+                                            .rotationEffect(.degrees(-90))
+                                            .frame(width: 20, height: 40)
+                                    }
+                                }
                             }
                         }
                         .chartYAxis {
@@ -300,9 +362,19 @@ struct ContentView: View {
                         }
                         .frame(height: 200)
                         
-                        let totalPlays = dailyActivityVM.points.reduce(0) { $0 + $1.playCount }
-                        let avgPlays = dailyActivityVM.points.isEmpty ? 0 : totalPlays / dailyActivityVM.points.count
-                        Text("Total: \(totalPlays) plays • Average: \(avgPlays) per day")
+                        let totalPlays = listeningActivityVM.points.reduce(0) { $0 + $1.playCount }
+                        let avgPlays = listeningActivityVM.points.isEmpty ? 0 : totalPlays / listeningActivityVM.points.count
+                        
+                        let periodLabel: String = {
+                            switch activityRange.aggregationUnit {
+                            case .day: return "per day"
+                            case .weekOfYear: return "per week"
+                            case .month: return "per month"
+                            default: return "per day"
+                            }
+                        }()
+                        
+                        Text("Total: \(totalPlays) plays • Average: \(avgPlays) \(periodLabel)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -411,7 +483,9 @@ struct ContentView: View {
                   let interval = makeInterval(for: option) else { return }
             // Use higher page limits for longer time ranges
             let maxPages = option.maxPagesForActivity
-            await dailyActivityVM.load(user: user, in: interval, maxPages: maxPages)
+            // Use appropriate aggregation unit to prevent overcrowding
+            let aggregationUnit = option.aggregationUnit
+            await listeningActivityVM.load(user: user, in: interval, maxPages: maxPages, aggregationUnit: aggregationUnit)
         }
     }   
     
