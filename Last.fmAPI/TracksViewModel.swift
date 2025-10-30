@@ -8,14 +8,14 @@ final class TracksViewModel: ObservableObject {
 
     private let api = APIClient()
 
-    func load(user: String? = nil) async {
+    func load(user: String? = nil, period: String? = nil) async {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             if let user, !user.isEmpty {
-                tracks = try await api.fetchUserTopTracks(user: user, limit: 20)
+                tracks = try await api.fetchUserTopTracks(user: user, limit: 20, period: period)
             } else {
                 tracks = try await api.fetchTopTracks(limit: 20)
             }
