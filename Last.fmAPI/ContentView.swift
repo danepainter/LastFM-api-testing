@@ -23,6 +23,11 @@ struct ContentView: View {
     // Grid-specific range selector (excludes 1 day)
     @State private var gridRange: RangeOption = .sevenDays
     @StateObject private var gridVM = TracksViewModel()
+    @StateObject private var gridImageGenerator = GridImageGenerator()
+    @State private var selectedGridSize: GridSize = .threeByThree
+    @State private var selectedExportRange: ExportDateRange = .sevenDays
+    @State private var showSaveSuccess = false
+    @State private var saveError: String?
     private let chartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths]
     private let activityChartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths, .oneYear, .overall]
     private let gridOptions: [RangeOption] = [.sevenDays, .oneMonth, .sixMonths, .oneYear, .overall]
@@ -217,6 +222,7 @@ struct ContentView: View {
 
                 if !vm.tracks.isEmpty {
                     artworkGridSection()
+                    exportGridSection()
                     genreChartSection()
                     dailyActivitySection()
                 }
@@ -305,6 +311,126 @@ struct ContentView: View {
                 Task {
                     await gridVM.load(user: username, period: newValue.apiValue, limit: 50)
                 }
+            }
+        }
+        
+        @ViewBuilder
+        fileprivate func exportGridSection() -> some View {
+            Section("Export Grid Image") {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Size picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Grid Size")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Picker("Grid Size", selection: $selectedGridSize) {
+                            ForEach(GridSize.allCases) { size in
+                                Text(size.title).tag(size)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    
+                    // Date range picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Date Range")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Picker("Date Range", selection: $selectedExportRange) {
+                            ForEach(ExportDateRange.allCases) { range in
+                                Text(range.displayTitle).tag(range)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    
+                    // Preview info
+                    let neededTracks = selectedGridSize.totalImages
+                    Text("Will generate \(selectedGridSize.title) grid (\(neededTracks) tracks) for \(selectedExportRange.displayTitle)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    // Loading indicator section (always visible when generating)
+                    if gridImageGenerator.isGeneratingImage {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .scaleEffect(1.2)
+                            Text("Generating grid image...")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                    }
+                    
+                    // Progress bar (visible during generation)
+                    if gridImageGenerator.isGeneratingImage && gridImageGenerator.generationProgress > 0 {
+                        VStack(spacing: 4) {
+                            ProgressView(value: gridImageGenerator.generationProgress)
+                                .progressViewStyle(.linear)
+                            Text("\(Int(gridImageGenerator.generationProgress * 100))% complete")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    // Generate and save button
+                    Button {
+                        Task {
+                            await generateAndSaveGrid()
+                        }
+                    } label: {
+                        HStack {
+                            if gridImageGenerator.isGeneratingImage {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "square.and.arrow.down")
+                            }
+                            Text(gridImageGenerator.isGeneratingImage ? "Generating & Saving..." : "Generate & Save to Photos")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(gridImageGenerator.isGeneratingImage || gridImageGenerator.isLoading)
+                    
+                    // Error message
+                    if let error = saveError {
+                        Text("Error: \(error)")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    
+                    // Success message
+                    if showSaveSuccess {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("Saved to Photos!")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            .onChange(of: selectedExportRange) { _, newValue in
+                Task {
+                    let limit = selectedGridSize.totalImages + 10 // Fetch a few extra in case some tracks don't have images
+                    await gridImageGenerator.loadTracks(user: username, dateRange: newValue, limit: limit)
+                }
+            }
+            .onChange(of: selectedGridSize) { _, newValue in
+                Task {
+                    let limit = newValue.totalImages + 10
+                    await gridImageGenerator.loadTracks(user: username, dateRange: selectedExportRange, limit: limit)
+                }
+            }
+            .task {
+                let limit = selectedGridSize.totalImages + 10
+                await gridImageGenerator.loadTracks(user: username, dateRange: selectedExportRange, limit: limit)
             }
         }
         
@@ -554,6 +680,52 @@ struct ContentView: View {
             // Use appropriate aggregation unit to prevent overcrowding
             let aggregationUnit = option.aggregationUnit
             await listeningActivityVM.load(user: user, in: interval, maxPages: maxPages, aggregationUnit: aggregationUnit)
+        }
+        
+        func generateAndSaveGrid() async {
+            saveError = nil
+            showSaveSuccess = false
+            
+            // Ensure loading state is visible
+            gridImageGenerator.isGeneratingImage = true
+            
+            // Update progress to show we're starting
+            await MainActor.run {
+                gridImageGenerator.generationProgress = 0.0
+            }
+            
+            guard let image = await gridImageGenerator.generateGridImage(
+                size: selectedGridSize,
+                dateRange: selectedExportRange,
+                username: username
+            ) else {
+                gridImageGenerator.isGeneratingImage = false
+                saveError = "Failed to generate grid image. Make sure you have enough tracks with artwork."
+                return
+            }
+            
+            // Update progress to show we're saving
+            await MainActor.run {
+                gridImageGenerator.generationProgress = 0.98
+            }
+            
+            do {
+                try await gridImageGenerator.saveToPhotoLibrary(image)
+                await MainActor.run {
+                    gridImageGenerator.isGeneratingImage = false
+                    gridImageGenerator.generationProgress = 0.0
+                }
+                showSaveSuccess = true
+                // Hide success message after 3 seconds
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                showSaveSuccess = false
+            } catch {
+                await MainActor.run {
+                    gridImageGenerator.isGeneratingImage = false
+                    gridImageGenerator.generationProgress = 0.0
+                }
+                saveError = error.localizedDescription
+            }
         }
     }   
     

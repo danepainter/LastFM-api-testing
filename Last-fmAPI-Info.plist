@@ -28,5 +28,7 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save your top tracks grid to your photo library</string>
 </dict>
 </plist>
