@@ -8,14 +8,36 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var vm = TracksViewModel()
+
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            Group {
+                if vm.isLoading {
+                    ProgressView("Loading...")
+                } else if let message = vm.errorMessage {
+                    VStack(spacing: 12) {
+                        Text("Oops").font(.headline)
+                        Text(message).font(.subheadline).foregroundStyle(.secondary)
+                        Button("Retry") { Task { await vm.load() } } 
+                    }
+                    .padding()
+                } else {
+                    List(vm.tracks) { track in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(track.name).font(.headline)
+                            if let artist = track.artist?.name {
+                                Text(artist).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .navigationTitle("Top Tracks")
         }
-        .padding()
+        .task { await vm.load() }
     }
 }
 
