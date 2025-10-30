@@ -11,6 +11,7 @@ import Charts
 struct ContentView: View {
     @StateObject private var vm = TracksViewModel()
     @StateObject private var ggvm = GenreStackedAreaChartViewModel()
+    @StateObject private var dailyActivityVM = DailyActivityChartViewModel()
     @Environment(\.openURL) private var openURL
     private let auth = AuthService()
     @State private var sessionKey: String?
@@ -18,7 +19,9 @@ struct ContentView: View {
     @State private var selectedRange: RangeOption = .overall
     // Chart-specific range selector (independent of track fetch range)
     @State private var chartRange: RangeOption = .sevenDays
+    @State private var activityRange: RangeOption = .sevenDays
     private let chartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths]
+    private let activityChartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths, .oneYear, .overall]
     
     
     var body: some View {
@@ -77,6 +80,17 @@ struct ContentView: View {
             case .sixMonths: return "6month"
             case .oneYear: return "12month"
             case .overall: return "overall"
+            }
+        }
+        
+        var dayStride: Int {
+            switch self {
+            case .oneDay: return 1
+            case .sevenDays: return 1
+            case .oneMonth: return 3
+            case .sixMonths: return 7
+            case .oneYear: return 30
+            case .overall: return 90
             }
         }
     }
@@ -143,11 +157,15 @@ struct ContentView: View {
 
                 if !vm.tracks.isEmpty {
                     genreChartSection()
+                    dailyActivitySection()
                 }
             }
             .navigationTitle("Your Top Tracks")
             .navigationBarTitleDisplayMode(.inline)
-            .task { await vm.load(user: username, period: selectedRange.apiValue) }
+            .task { 
+                await vm.load(user: username, period: selectedRange.apiValue)
+                await buildDailyActivity(for: activityRange)
+            }
             .onChange(of: selectedRange) { _, _ in
                 Task { await vm.load(user: username, period: selectedRange.apiValue) }
             }
@@ -155,10 +173,14 @@ struct ContentView: View {
                 Task {
                     ggvm.maxTagsPerTrack = 3
                     await buildChart(for: chartRange)
+                    await buildDailyActivity(for: activityRange)
                 }
             }
             .onChange(of: chartRange) { _, newValue in
                 Task { await buildChart(for: newValue) }
+            }
+            .onChange(of: activityRange) { _, newValue in
+                Task { await buildDailyActivity(for: newValue) }
             }
         }
 
@@ -206,6 +228,72 @@ struct ContentView: View {
                                     .font(.footnote)
                             }
                         }
+                    }
+                }
+            }
+        }
+        
+        @ViewBuilder
+        fileprivate func dailyActivitySection() -> some View {
+            Section("Daily Listening Activity") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Time Range", selection: $activityRange) {
+                        ForEach(activityChartOptions, id: \.self) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    
+                    if dailyActivityVM.isLoading {
+                        ProgressView("Loading activity…")
+                    } else if let error = dailyActivityVM.errorMessage {
+                        VStack(spacing: 8) {
+                            Text("Unable to load activity")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    } else if dailyActivityVM.points.isEmpty {
+                        Text("No activity data available for this range.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Chart(dailyActivityVM.points) { point in
+                            LineMark(
+                                x: .value("Date", point.date, unit: .day),
+                                y: .value("Plays", point.playCount)
+                            )
+                            .foregroundStyle(.green.gradient)
+                            .interpolationMethod(.catmullRom)
+                            .symbol(Circle().strokeBorder(lineWidth: 2))
+                            
+                            AreaMark(
+                                x: .value("Date", point.date, unit: .day),
+                                y: .value("Plays", point.playCount)
+                            )
+                            .foregroundStyle(.green.opacity(0.1).gradient)
+                            .interpolationMethod(.catmullRom)
+                        }
+                        .chartXAxis {
+                            AxisMarks { value in
+                                AxisGridLine()
+                                AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+                            }
+                        }
+                        .chartYAxis {
+                            AxisMarks { value in
+                                AxisGridLine()
+                                AxisValueLabel()
+                            }
+                        }
+                        .frame(height: 200)
+                        
+                        let totalPlays = dailyActivityVM.points.reduce(0) { $0 + $1.playCount }
+                        let avgPlays = dailyActivityVM.points.isEmpty ? 0 : totalPlays / dailyActivityVM.points.count
+                        Text("Total: \(totalPlays) plays • Average: \(avgPlays) per day")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -305,6 +393,12 @@ struct ContentView: View {
                 f.dateFormat = "MMM yy" // Jan 25
             }
             return f
+        }
+        
+        func buildDailyActivity(for option: RangeOption) async {
+            guard let user = username, !user.isEmpty,
+                  let interval = makeInterval(for: option) else { return }
+            await dailyActivityVM.load(user: user, in: interval)
         }
     }   
     
