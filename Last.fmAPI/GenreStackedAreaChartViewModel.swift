@@ -338,27 +338,44 @@ final class GenreStackedAreaChartViewModel: ObservableObject {
 
     // MARK: - Styling helpers
     func color(for genre: String) -> Color {
-        // A small, distinct palette; "other" gets a neutral tint
+        // Use distinct colors for common genres - mix of Cherry Chaos and other vibrant colors
         let palette: [String: Color] = [
-            "rock": .red,
-            "pop": .blue,
-            "hip-hop": .purple,
-            "electronic": .teal,
-            "indie": .orange,
-            "metal": .gray,
-            "jazz": .green,
-            "classical": .brown,
-            "other": .secondary
+            "rock": Color.primaryRed,                    // Cherry Chaos red
+            "pop": Color.blue,                            // Blue
+            "hip-hop": Color.purple,                     // Purple
+            "electronic": Color.teal,                    // Teal
+            "indie": Color.orange,                        // Orange
+            "metal": Color.gray,                          // Gray
+            "jazz": Color.green,                          // Green
+            "classical": Color.brown,                     // Brown
+            "r&b": Color.pink,                           // Pink
+            "country": Color(red: 0.85, green: 0.65, blue: 0.13), // Gold
+            "folk": Color(red: 0.55, green: 0.8, blue: 0.5),    // Light green
+            "reggae": Color(red: 1.0, green: 0.84, blue: 0.0),  // Yellow
+            "blues": Color(red: 0.0, green: 0.5, blue: 1.0),     // Royal blue
+            "alternative": Color(red: 0.75, green: 0.0, blue: 0.75), // Magenta
+            "punk": Color(red: 1.0, green: 0.0, blue: 0.5),      // Hot pink
+            "soul": Color(red: 0.85, green: 0.65, blue: 0.85),  // Lavender
+            "funk": Color(red: 1.0, green: 0.65, blue: 0.0),     // Orange
+            "disco": Color(red: 1.0, green: 0.84, blue: 0.0),    // Gold
+            "gospel": Color(red: 0.5, green: 0.5, blue: 1.0),    // Light blue
+            "rap": Color.secondaryRed,                    // Cherry Chaos secondary
+            "other": Color.secondary                      // System secondary
         ]
-        if let c = palette[genre] { return c }
-        // Deterministic fallback color for any unknown genre using a simple hash → hue
+        if let c = palette[genre.lowercased()] { return c }
+        
+        // For unknown genres, generate distinct colors using a hash-based approach
         let lower = genre.lowercased()
         var hasher = Hasher()
         hasher.combine(lower)
-        let hash = hasher.finalize()
-        // Map hash to [0,1) hue; spread saturation/brightness for readability
-        let hue = Double(abs(hash % 360)) / 360.0
-        return Color(hue: hue, saturation: 0.65, brightness: 0.85)
+        let hash = abs(hasher.finalize())
+        
+        // Generate distinct colors using HSV space
+        let hue = Double(hash % 360) / 360.0
+        let saturation = 0.7 + Double((hash / 360) % 3) * 0.1  // 0.7 to 0.9
+        let brightness = 0.6 + Double((hash / 1080) % 4) * 0.1 // 0.6 to 0.9
+        
+        return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 
     // MARK: - Networking (track.getInfo to read duration + toptags)

@@ -28,9 +28,9 @@ struct ContentView: View {
     @State private var selectedExportRange: ExportDateRange = .sevenDays
     @State private var showSaveSuccess = false
     @State private var saveError: String?
-    private let chartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths]
-    private let activityChartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .sixMonths, .oneYear, .overall]
-    private let gridOptions: [RangeOption] = [.sevenDays, .oneMonth, .sixMonths, .oneYear, .overall]
+    private let chartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .threeMonths, .sixMonths]
+    private let activityChartOptions: [RangeOption] = [.oneDay, .sevenDays, .oneMonth, .threeMonths, .sixMonths, .oneYear, .overall]
+    private let gridOptions: [RangeOption] = [.sevenDays, .oneMonth, .threeMonths, .sixMonths, .oneYear, .overall]
     
     
     var body: some View {
@@ -64,6 +64,7 @@ struct ContentView: View {
         case oneDay
         case sevenDays
         case oneMonth
+        case threeMonths
         case sixMonths
         case oneYear
         case overall
@@ -73,6 +74,7 @@ struct ContentView: View {
             case .oneDay: return "1 day"
             case .sevenDays: return "7 days"
             case .oneMonth: return "1 month"
+            case .threeMonths: return "3 months"
             case .sixMonths: return "6 months"
             case .oneYear: return "1 year"
             case .overall: return "All Time"
@@ -86,6 +88,7 @@ struct ContentView: View {
             case .oneDay: return "7day"
             case .sevenDays: return "7day"
             case .oneMonth: return "1month"
+            case .threeMonths: return "3month"
             case .sixMonths: return "6month"
             case .oneYear: return "12month"
             case .overall: return "overall"
@@ -97,6 +100,7 @@ struct ContentView: View {
             case .oneDay: return 1
             case .sevenDays: return 1
             case .oneMonth: return 3
+            case .threeMonths: return 5
             case .sixMonths: return 7
             case .oneYear: return 30
             case .overall: return 90
@@ -108,6 +112,7 @@ struct ContentView: View {
             case .oneDay: return 5        // ~1000 scrobbles max
             case .sevenDays: return 10     // ~2000 scrobbles max
             case .oneMonth: return 20     // ~4000 scrobbles max
+            case .threeMonths: return 30   // ~6000 scrobbles max
             case .sixMonths: return 50    // ~10,000 scrobbles max
             case .oneYear: return 100     // ~20,000 scrobbles max
             case .overall: return 250     // ~50,000 scrobbles max (covers 3 years at ~45 scrobbles/day)
@@ -119,6 +124,9 @@ struct ContentView: View {
             case .oneDay, .sevenDays, .oneMonth:
                 // Short ranges: show daily granularity
                 return .day
+            case .threeMonths:
+                // Medium range: aggregate by week to avoid overcrowding (~13 points)
+                return .weekOfYear
             case .sixMonths:
                 // Medium range: aggregate by week to avoid overcrowding (~26 points)
                 return .weekOfYear
@@ -136,6 +144,7 @@ struct ContentView: View {
             case .oneDay: return 12      // Show every ~2 hours
             case .sevenDays: return 7     // Show each day
             case .oneMonth: return 10     // Show ~every 3 days
+            case .threeMonths: return 12   // Show ~every week
             case .sixMonths: return 12    // Show ~every 2 weeks
             case .oneYear: return 12      // Show ~every month
             case .overall: return 12      // Show ~every 3 months
@@ -149,6 +158,8 @@ struct ContentView: View {
             case .sevenDays:
                 return .dateTime.weekday(.abbreviated)
             case .oneMonth:
+                return .dateTime.month(.abbreviated).day()
+            case .threeMonths:
                 return .dateTime.month(.abbreviated).day()
             case .sixMonths:
                 return .dateTime.month(.abbreviated)
@@ -169,6 +180,7 @@ struct ContentView: View {
                     .font(.title)
                     .multilineTextAlignment(.center)
                     .bold()
+                    .foregroundStyle(Color.primaryRed)
                 Button {
                     let url = auth.makeAuthURL()
                     openURL(url)
@@ -177,11 +189,12 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .tint(Color.primaryRed)
                 .controlSize(.large)
                 .padding(.horizontal, 24)
                 Spacer()
             }
+            .background(Color.darkestBackground)
         }
 
         @ViewBuilder
@@ -204,6 +217,8 @@ struct ContentView: View {
                             Text("Oops").font(.headline)
                             Text(message).font(.subheadline).foregroundStyle(.secondary)
                             Button("Retry") { Task { await vm.load(user: username, period: selectedRange.apiValue) } }
+                                .buttonStyle(.borderedProminent)
+                                .tint(Color.primaryRed)
                         }
                         .padding(.vertical, 8)
                     } else {
@@ -229,6 +244,7 @@ struct ContentView: View {
             }
             .navigationTitle("Your Top Tracks")
             .navigationBarTitleDisplayMode(.inline)
+                                .tint(Color.primaryRed)
             .task { 
                 await vm.load(user: username, period: selectedRange.apiValue)
                 await buildDailyActivity(for: activityRange)
@@ -278,6 +294,8 @@ struct ContentView: View {
                                     await gridVM.load(user: username, period: gridRange.apiValue)
                                 }
                             }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Color.primaryRed)
                         }
                         .padding(.vertical, 8)
                     } else if gridVM.tracks.isEmpty {
@@ -355,6 +373,7 @@ struct ContentView: View {
                         HStack(spacing: 12) {
                             ProgressView()
                                 .progressViewStyle(.circular)
+                                .tint(Color.primaryRed)
                                 .scaleEffect(1.2)
                             Text("Generating grid image...")
                                 .font(.subheadline)
@@ -369,6 +388,7 @@ struct ContentView: View {
                         VStack(spacing: 4) {
                             ProgressView(value: gridImageGenerator.generationProgress)
                                 .progressViewStyle(.linear)
+                                .tint(Color.primaryRed)
                             Text("\(Int(gridImageGenerator.generationProgress * 100))% complete")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -385,6 +405,7 @@ struct ContentView: View {
                             if gridImageGenerator.isGeneratingImage {
                                 ProgressView()
                                     .progressViewStyle(.circular)
+                                    .tint(.white)
                                     .scaleEffect(0.8)
                             } else {
                                 Image(systemName: "square.and.arrow.down")
@@ -394,23 +415,24 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.primaryRed)
                     .disabled(gridImageGenerator.isGeneratingImage || gridImageGenerator.isLoading)
                     
                     // Error message
                     if let error = saveError {
                         Text("Error: \(error)")
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color.secondaryRed)
                     }
                     
                     // Success message
                     if showSaveSuccess {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(Color.primaryRed)
                             Text("Saved to Photos!")
                                 .font(.caption)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(Color.primaryRed)
                         }
                     }
                 }
@@ -524,7 +546,7 @@ struct ContentView: View {
                                 x: .value("Date", point.date, unit: chartUnit),
                                 y: .value("Plays", point.playCount)
                             )
-                            .foregroundStyle(.green.gradient)
+                            .foregroundStyle(Color.primaryRed.gradient)
                             .interpolationMethod(.catmullRom)
                             .symbol(Circle().strokeBorder(lineWidth: 2))
                             
@@ -532,7 +554,7 @@ struct ContentView: View {
                                 x: .value("Date", point.date, unit: chartUnit),
                                 y: .value("Plays", point.playCount)
                             )
-                            .foregroundStyle(.green.opacity(0.1).gradient)
+                            .foregroundStyle(Color.primaryRed.opacity(0.15).gradient)
                             .interpolationMethod(.catmullRom)
                         }
                         .chartXAxis {
@@ -611,6 +633,8 @@ struct ContentView: View {
                 start = cal.date(byAdding: .day, value: -7, to: end) ?? end
             case .oneMonth:
                 start = cal.date(byAdding: .month, value: -1, to: end) ?? end
+            case .threeMonths:
+                start = cal.date(byAdding: .month, value: -3, to: end) ?? end
             case .sixMonths:
                 start = cal.date(byAdding: .month, value: -6, to: end) ?? end
             case .oneYear:
@@ -631,6 +655,8 @@ struct ContentView: View {
                 return (.hour, 12)
             case .oneMonth:
                 return (.day, 1)
+            case .threeMonths:
+                return (.weekOfYear, 1)
             case .sixMonths:
                 return (.weekOfYear, 1)
             case .oneYear:
@@ -646,6 +672,7 @@ struct ContentView: View {
             case .oneDay: return (.hour, 2)
             case .sevenDays: return (.day, 1)
             case .oneMonth: return (.day, 7)
+            case .threeMonths: return (.month, 1)
             case .sixMonths: return (.month, 1)
             case .oneYear: return (.month, 1)
             case .overall: return (.month, 3)
@@ -661,6 +688,8 @@ struct ContentView: View {
             case .sevenDays:
                 f.dateFormat = "E" // Mon, Tue
             case .oneMonth:
+                f.dateFormat = "MMM d" // Jan 5
+            case .threeMonths:
                 f.dateFormat = "MMM d" // Jan 5
             case .sixMonths:
                 f.dateFormat = "MMM" // Jan
