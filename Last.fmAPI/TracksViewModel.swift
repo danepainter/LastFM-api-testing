@@ -19,13 +19,6 @@ final class TracksViewModel: ObservableObject {
             } else {
                 tracks = try await api.fetchTopTracks(limit: limit)
             }
-            if !tracks.isEmpty {
-                let sample = tracks.prefix(5)
-                for (idx, t) in sample.enumerated() {
-                    let imgs = t.image?.map { "\($0.size ?? "?")=\($0.url)" }.joined(separator: ", ") ?? "nil"
-                    print("[TopTracks] #\(idx+1) \(t.name) by \(t.artist?.name ?? "-") images: \(imgs)")
-                }
-            }
         } catch {
             errorMessage = (error as NSError).localizedDescription
         }

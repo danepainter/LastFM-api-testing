@@ -68,13 +68,30 @@ final class GenreStackedAreaChartViewModel: ObservableObject {
         var genreTotalsSeconds: [String: Double] = [:]
         let bucketCount = starts.count
 
+        // Check cache first to avoid unnecessary API calls
+        let cacheKeyPrefix = "\(maxTagsPerTrack)_"
+        
         await withTaskGroup(of: (Int, TrackMeta?).self) { group in
             for (idx, track) in tracks.enumerated() {
                 let artistName = track.artist?.name ?? ""
                 let trackName = track.name
                 let playcount = Double(track.playcount ?? "0") ?? 0
-                group.addTask {
+                let cacheKey = "\(cacheKeyPrefix)\(artistName)|\(trackName)"
+                
+                group.addTask { [weak self] in
+                    guard let self = self else { return (idx, nil) }
+                    
+                    // Check cache first (synchronous read is safe)
+                    if let cached = await self.metaCache[cacheKey] {
+                        let totalSeconds = cached.durationSec * playcount
+                        return (idx, TrackMeta(durationSec: totalSeconds, tags: cached.tags))
+                    }
+                    
                     if let meta = await Self.fetchTrackMeta(artist: artistName, track: trackName, tagLimit: self.maxTagsPerTrack) {
+                        // Cache the result on main actor
+                        await MainActor.run {
+                            self.metaCache[cacheKey] = (durationSec: meta.durationSec, tags: meta.tags)
+                        }
                         let totalSeconds = meta.durationSec * playcount
                         return (idx, TrackMeta(durationSec: totalSeconds, tags: meta.tags))
                     } else {

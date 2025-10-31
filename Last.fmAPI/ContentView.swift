@@ -246,17 +246,25 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
                                 .tint(Color.primaryRed)
             .task { 
-                await vm.load(user: username, period: selectedRange.apiValue)
-                await buildDailyActivity(for: activityRange)
+                // Load in parallel for faster initial load
+                async let tracksTask: () = vm.load(user: username, period: selectedRange.apiValue)
+                async let activityTask: () = buildDailyActivity(for: activityRange)
+                await tracksTask
+                await activityTask
             }
             .onChange(of: selectedRange) { _, _ in
                 Task { await vm.load(user: username, period: selectedRange.apiValue) }
             }
-            .onReceive(vm.$tracks) { _ in
+            .onReceive(vm.$tracks) { tracks in
+                // Only rebuild if tracks actually changed (not empty)
+                guard !tracks.isEmpty else { return }
                 Task {
                     ggvm.maxTagsPerTrack = 3
-                    await buildChart(for: chartRange)
-                    await buildDailyActivity(for: activityRange)
+                    // Build charts in parallel
+                    async let chartTask: () = buildChart(for: chartRange)
+                    async let activityTask: () = buildDailyActivity(for: activityRange)
+                    await chartTask
+                    await activityTask
                 }
             }
             .onChange(of: chartRange) { _, newValue in

@@ -25,6 +25,17 @@ private struct LastFMErrorResponse: Decodable {
 struct APIClient {
     private let base = "https://ws.audioscrobbler.com/2.0/"
     private let apiKey = Secrets.apiKey
+    
+    // Shared URLSession with optimized configuration
+    private static let session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.httpMaximumConnectionsPerHost = 10
+        cfg.timeoutIntervalForResource = 20
+        cfg.timeoutIntervalForRequest = 15
+        cfg.waitsForConnectivity = false
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData // API responses shouldn't be cached
+        return URLSession(configuration: cfg)
+    }()
 
     func fetchTopTracks(limit: Int = 20) async throws -> [Track] {
         var comps = URLComponents(string: base)
@@ -35,7 +46,7 @@ struct APIClient {
             .init(name: "limit", value: String(limit))
         ]
         guard let url = comps?.url else { throw APIError.badURL }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         if status != 200 {
             if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
@@ -65,7 +76,7 @@ struct APIClient {
         comps?.queryItems = items
         guard let url = comps?.url else { throw APIError.badURL }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         if status != 200 {
             if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
@@ -96,7 +107,7 @@ struct APIClient {
         ]
         guard let url = comps?.url else { throw APIError.badURL }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         if status != 200 {
             if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
@@ -140,7 +151,7 @@ struct APIClient {
         ]
         guard let url = comps?.url else { throw APIError.badURL }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         if status != 200 {
             if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {
@@ -191,7 +202,7 @@ struct APIClient {
         ]
         guard let url = comps?.url else { throw APIError.badURL }
         
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         if status != 200 {
             if let err = try? JSONDecoder().decode(LastFMErrorResponse.self, from: data) {

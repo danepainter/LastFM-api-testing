@@ -7,10 +7,20 @@ final class ImageCache {
     private let cache = NSCache<NSURL, UIImage>()
     private init() {
         cache.countLimit = 500
-        cache.totalCostLimit = 50 * 1024 * 1024
+        cache.totalCostLimit = 50 * 1024 * 1024 // 50MB
+        // Optimize cache eviction
+        cache.evictsObjectsWithDiscardedContent = true
     }
-    func image(for url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
-    func insert(_ image: UIImage, for url: URL) { cache.setObject(image, forKey: url as NSURL, cost: image.pngData()?.count ?? 0) }
+    
+    func image(for url: URL) -> UIImage? { 
+        cache.object(forKey: url as NSURL) 
+    }
+    
+    func insert(_ image: UIImage, for url: URL) { 
+        // Calculate more accurate cost based on actual memory usage
+        let cost = Int(image.size.width * image.size.height * 4) // width * height * 4 bytes per pixel (RGBA)
+        cache.setObject(image, forKey: url as NSURL, cost: cost)
+    }
 }
 
 final class ImageLoader: ObservableObject {
@@ -24,8 +34,10 @@ final class ImageLoader: ObservableObject {
         let cfg = URLSessionConfiguration.default
         cfg.requestCachePolicy = .returnCacheDataElseLoad
         cfg.urlCache = .shared
-        cfg.httpMaximumConnectionsPerHost = 6
-        cfg.timeoutIntervalForResource = 30
+        cfg.httpMaximumConnectionsPerHost = 10 // Increased for better parallel loading
+        cfg.timeoutIntervalForResource = 20 // Reduced from 30 for faster failure detection
+        cfg.timeoutIntervalForRequest = 15
+        cfg.waitsForConnectivity = false // Don't wait for connectivity changes
         return URLSession(configuration: cfg)
     }()
 
@@ -80,9 +92,6 @@ struct RemoteImage: View {
                 Color.gray.opacity(0.1)
             } else {
                 Color.gray.opacity(0.2)
-                    .overlay(
-                        Group { if let error = loader.error { Text("") .onAppear { print("RemoteImage failed for URL: \(url?.absoluteString ?? "nil") —", error.localizedDescription) } } }
-                    )
             }
         }
         .frame(width: width, height: height)

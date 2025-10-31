@@ -97,8 +97,9 @@ class GridImageGenerator: ObservableObject {
     }
     
     private func preloadImages() async {
-        let tracksNeedingImages = tracks.prefix(min(tracks.count, 100))
+        let tracksNeedingImages = Array(tracks.prefix(min(tracks.count, 100)))
         
+        // Limit concurrent image loads to avoid overwhelming the network
         await withTaskGroup(of: Void.self) { group in
             for track in tracksNeedingImages {
                 group.addTask { [weak self] in
@@ -109,14 +110,24 @@ class GridImageGenerator: ObservableObject {
     }
     
     private func loadImageForTrack(_ track: Track) async {
+        // Check if image is already loaded
+        if imageLoaders[track.id]?.image != nil {
+            return
+        }
+        
         // Check if we have a valid image URL
         if let url = track.imageURL, !url.isLastFMPlaceholderImage {
             if imageLoaders[track.id] == nil {
                 let loader = ImageLoader()
                 imageLoaders[track.id] = loader
                 loader.load(from: url)
-                // Wait a bit for image to load
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                // Wait for image to load with polling, max 2 seconds
+                for _ in 0..<20 {
+                    if loader.image != nil {
+                        return
+                    }
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                }
             }
             return
         }
@@ -128,7 +139,13 @@ class GridImageGenerator: ObservableObject {
                     let loader = ImageLoader()
                     imageLoaders[track.id] = loader
                     loader.load(from: url)
-                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    // Wait for image to load with polling, max 2 seconds
+                    for _ in 0..<20 {
+                        if loader.image != nil {
+                            return
+                        }
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    }
                 }
             }
         }
