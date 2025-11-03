@@ -16,7 +16,7 @@ struct ContentView: View {
     private let auth = AuthService()
     @State private var sessionKey: String?
     @State private var username: String?
-    @State private var selectedRange: RangeOption = .overall
+    @State private var selectedRange: RangeOption = .sevenDays
     // Chart-specific range selector (independent of track fetch range)
     @State private var chartRange: RangeOption = .sevenDays
     @State private var activityRange: RangeOption = .sevenDays
